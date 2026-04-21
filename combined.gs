@@ -25,7 +25,7 @@
  *   /Users/matousnovy/Documents/PPC/skripty/shopping-pmax-loser-detector/README.md
  *   /Users/matousnovy/Documents/PPC/skripty/shopping-pmax-loser-detector/DEPLOYMENT-GUIDE.md
  *
- * VYGENEROVANO: 2026-04-21 19:02
+ * VYGENEROVANO: 2026-04-21 21:05
  * BUILD SCRIPT: build-combined.sh
  * ============================================================================
  */
@@ -5173,12 +5173,21 @@ var Output = (function () {
   }
 
   /**
-   * Spocti kumulativni statistiky z LIFECYCLE_LOG pro dashboard.
+   * Spocti statistiky z LIFECYCLE_LOG pro dashboard.
+   *
+   * Vraci:
+   *   - lastRun: transitions z NEJNOVEJSIHO run_date (actionable pro tydenni review)
+   *   - currentMonth / prevMonth: transitions za cely mesic (pro mesicni review)
+   *   - total / uniqueItemCount / runCount: kumulativni historie (kontext v subtitle)
+   *
+   * Dashboard KPI karty pouzivaji lastRun (ne kumulativni totals) — jinak by cisla
+   * rostla do nekonecna pri pravidelnem spousteni a ztratila actionable vyznam.
    */
   function computeLifecycleStats(data, runDate) {
     var stats = {
       total: data.length,
       transitions: { NEW_FLAG: 0, REPEATED: 0, RESOLVED: 0, UN_FLAGGED: 0, RE_FLAGGED: 0, CATEGORY_CHANGE: 0 },
+      lastRun: { NEW_FLAG: 0, REPEATED: 0, RESOLVED: 0, UN_FLAGGED: 0, RE_FLAGGED: 0, CATEGORY_CHANGE: 0 },
       uniqueItems: {},
       runDates: {},
       currentMonth: { NEW_FLAG: 0, RESOLVED: 0, RE_FLAGGED: 0 },
@@ -5188,6 +5197,13 @@ var Output = (function () {
     var cmStr = Utils.formatDate(runDate).substring(0, 7); // YYYY-MM
     var pmDate = new Date(runDate.getFullYear(), runDate.getMonth() - 1, 1);
     var pmStr = Utils.formatDate(pmDate).substring(0, 7);
+
+    // Prvni prochod: najit NEJNOVEJSI date v data (latest run)
+    var latestDate = '';
+    for (var li = 0; li < data.length; li++) {
+      var dStr = Utils.normalizeDate(data[li][0]);
+      if (dStr && dStr > latestDate) latestDate = dStr;
+    }
 
     for (var i = 0; i < data.length; i++) {
       var d = data[i];
@@ -5199,6 +5215,11 @@ var Output = (function () {
       if (stats.transitions[transition] !== undefined) stats.transitions[transition]++;
       if (itemId) stats.uniqueItems[itemId] = true;
       if (dateStr) stats.runDates[dateStr] = true;
+
+      // Last run transitions (actionable)
+      if (dateStr === latestDate && stats.lastRun[transition] !== undefined) {
+        stats.lastRun[transition]++;
+      }
 
       if (monthKey === cmStr && stats.currentMonth[transition] !== undefined) {
         stats.currentMonth[transition]++;
@@ -5212,6 +5233,7 @@ var Output = (function () {
     stats.runCount = Object.keys(stats.runDates).length;
     stats.currentMonthStr = cmStr;
     stats.prevMonthStr = pmStr;
+    stats.latestRunDate = latestDate;
     return stats;
   }
 
@@ -5226,11 +5248,13 @@ var Output = (function () {
       .setHorizontalAlignment('center').setVerticalAlignment('middle').setFontFamily('Montserrat');
     sheet.setRowHeight(1, 36);
 
-    // Row 2: Subtitle
+    // Row 2: Subtitle — info o POSLEDNIM RUNU + kumulativni kontext vpravo
+    var subtitleText = '📅 Poslední run: ' + (stats.latestRunDate || '—') +
+                       '  ·  Historie: ' + formatInt(stats.total) + ' transitions, ' +
+                       formatInt(stats.uniqueItemCount) + ' unikátních produktů, ' +
+                       formatInt(stats.runCount) + ' runs';
     sheet.getRange(2, 1, 1, numCols).merge()
-      .setValue(formatInt(stats.total) + ' transitions  ·  ' +
-                formatInt(stats.uniqueItemCount) + ' unikátních produktů  ·  ' +
-                formatInt(stats.runCount) + ' runs')
+      .setValue(subtitleText)
       .setBackground('#e8f0fe').setFontColor('#1a73e8').setFontSize(10).setFontStyle('italic')
       .setHorizontalAlignment('center').setVerticalAlignment('middle');
     sheet.setRowHeight(2, 22);
@@ -5238,14 +5262,16 @@ var Output = (function () {
     // Row 3: spacer
     sheet.setRowHeight(3, 8);
 
-    // Rows 4-5: 6 KPI karet (12 cols, zbytek padding)
+    // Rows 4-5: 6 KPI karet — POSLEDNI RUN (ne kumulativni historie!)
+    // Kumulativni totals by rostly do nekonecna pri pravidelnem tydnem spousteni.
+    // "Poslední run" = actionable pohled pro tydenni review.
     var kpiCats = [
-      ['🆕 NEW_FLAG', stats.transitions.NEW_FLAG, '#e8f0fe', '#1a73e8'],
-      ['🔁 REPEATED', stats.transitions.REPEATED, '#fff4e5', '#a56200'],
-      ['✅ RESOLVED', stats.transitions.RESOLVED, '#e6f4ea', '#1e8e3e'],
-      ['🌱 UN_FLAGGED', stats.transitions.UN_FLAGGED, '#e6f4ea', '#1e8e3e'],
-      ['⚠️ RE_FLAGGED', stats.transitions.RE_FLAGGED, '#fce8e6', '#c5221f'],
-      ['🔄 CAT_CHANGE', stats.transitions.CATEGORY_CHANGE, '#f1f3f4', '#5f6368']
+      ['🆕 NEW_FLAG', stats.lastRun.NEW_FLAG, '#e8f0fe', '#1a73e8'],
+      ['🔁 REPEATED', stats.lastRun.REPEATED, '#fff4e5', '#a56200'],
+      ['✅ RESOLVED', stats.lastRun.RESOLVED, '#e6f4ea', '#1e8e3e'],
+      ['🌱 UN_FLAGGED', stats.lastRun.UN_FLAGGED, '#e6f4ea', '#1e8e3e'],
+      ['⚠️ RE_FLAGGED', stats.lastRun.RE_FLAGGED, '#fce8e6', '#c5221f'],
+      ['🔄 CAT_CHANGE', stats.lastRun.CATEGORY_CHANGE, '#f1f3f4', '#5f6368']
     ];
 
     // Header row (row 4)
