@@ -173,19 +173,71 @@ Otevři svůj Google Sheet (URL z Kroku 3). Měly by být 5 tabů (README + 4 da
 
 ## Krok 8: Aplikuj labels v GMC / Mergado
 
-### Přes GMC Supplemental Feed
+### 🥇 Doporučeno: GMC Supplemental Feed s Google Sheets (auto-refresh)
 
-1. Ve FEED_UPLOAD tabu: **File → Download → Comma-separated values (.csv)**
-2. V Google Merchant Center:
-   - **Products → Feeds → Supplemental feeds**
-   - Pokud ještě není: vytvoř nový supplemental feed "Loser Detector Labels"
-   - Upload CSV nebo schedule z Google Sheets
-3. Počkej na next feed refresh (typicky 1-24h)
-4. V Google Ads: vytvoř listing group rules v rest kampani s filter `custom_label_X = loser_rest`
+**Toto je produkční setup** — feed se automaticky aktualizuje po každém týdením runu skriptu bez manuálního uploadu.
 
-### Přes Mergado
+#### 8.1 Přidej nový supplemental feed v GMC
 
-1. V Mergado vytvoř rule: "IF custom_label_X IS IN [list ze sheetu] THEN ..."
+1. V Merchant Center: **Marketing → Feeds → Supplemental feeds** (nebo **Products → Feeds**)
+2. Klikni **+** (Add supplemental source)
+3. **Zdroj dat:** `Google Tabulky` / Google Sheets
+4. **Vyber existující Tabulku** (ne "Generate new")
+5. Vlož URL output sheetu klienta:
+   ```
+   https://docs.google.com/spreadsheets/d/<ID_SHEETU>/edit
+   ```
+6. ⚠️ **KRITICKÉ:** v dialogu **"Název listu" vyber `FEED_UPLOAD`** (NE default první tab = README, GMC by pak četl chybné data).
+
+#### 8.2 Nastav parametry feedu
+
+- **Název feedu:** `Loser Detector — custom_label_N` (N = CONFIG.customLabelIndex)
+- **Země prodeje:** dle klienta (CZ / SK / ...)
+- **Jazyk:** dle klienta
+- **Plán načítání (Fetch schedule):**
+  - Frequency: **Denně**
+  - Čas: **08:00** (pondělí ráno po týdenním runu skriptu)
+  - Časové pásmo: **Europe/Prague**
+
+#### 8.3 Přiřaď k primary feed
+
+1. GMC → **Primary feeds** → klikni na primární feed klienta
+2. Záložka **Settings / Pravidla** → sekce **Supplemental feeds**
+3. **Add supplemental feed** → vyber náš nový feed
+4. Uložit
+
+#### 8.4 Ověření
+
+Po 5-30 min otevři supplemental feed → **Processing**:
+
+- ✅ Názvy atributů: `id`, `custom_label_N`
+- ✅ Celkový počet aktualizovaných produktů: cca stejný jako `flagged + healthy` v Logger výstupu skriptu
+- ✅ Shodující se produkty: ideálně = celkový (pokud 100% item_id existuje v primary)
+- ❌ Pokud vidíš chyby typu "Neplatný atribut id" nebo "Příliš mnoho hodnot" → GMC čte špatný tab, zopakuj krok 8.1 s explicit výběrem `FEED_UPLOAD`
+
+#### 8.5 Nastavit listing groups v Google Ads
+
+V **rest kampani** (Shopping nebo PMAX):
+
+- **Varianta A:** Listing group filter `custom_label_N = loser_rest` → jen losery do rest
+- **Varianta B:** Listing group filter `custom_label_N != healthy` → všechno kromě zdravých do rest
+- **Varianta C (rozšířená):** `custom_label_N IN (loser_rest, low_ctr_audit, DECLINING)` → negativní kategorie do rest, RISING a LOST_OPPORTUNITY zůstávají v main (scaling)
+
+V **main kampani** obráceně — exclude `loser_rest` nebo include `healthy`:
+
+- `custom_label_N = healthy` → jen ověřené zdravé produkty
+- Nebo: `custom_label_N != loser_rest AND != low_ctr_audit` → vše kromě evidentně problémových
+
+### 🥈 Alternativa: Manuální CSV upload (jednorázově / bez auto-refresh)
+
+1. V sheetu otevři tab **FEED_UPLOAD**
+2. `Soubor → Stáhnout → Hodnoty oddělené čárkou (.csv)` — stáhne JEN aktivní tab
+3. GMC → supplemental feed → **Upload file** → vyber stažený CSV
+4. Nevýhoda: nutno opakovat každý týden po runu skriptu
+
+### 🥉 Přes Mergado
+
+1. V Mergado vytvoř rule: "IF custom_label_N IS IN [list ze sheetu] THEN ..."
 2. Uploaduj seznam item_id z FEED_UPLOAD tabu
 3. Aktivuj rule
 
