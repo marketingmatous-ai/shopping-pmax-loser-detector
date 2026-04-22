@@ -429,7 +429,18 @@ adminEmail: ''             // Email pro notifikace (volitelné)
 customLabelIndex: 2        // Číslo labelu 0-4
 labelLoserRestValue: 'loser_rest'
 labelLowCtrValue: 'low_ctr_audit'
+labelHealthyValue: 'healthy'   // '' = nezapisovat healthy label
 ```
+
+### Item_id case (pro match s GMC supplemental feed)
+```javascript
+itemIdCaseOverride: 'auto'
+// 'auto'     — detekuj dominant case z shopping_product (DEFAULT, doporučeno)
+// 'upper'    — vynutit UPPERCASE (pozor: rozbije mixed-case jako "Print")
+// 'lower'    — vynutit lowercase
+// 'preserve' — nic neupravovat (= lowercase z Google Ads)
+```
+Skript automaticky mapuje item_id ze `shopping_product` resource (= přesně jak v GMC, včetně mixed-case). Produkty co nejsou v aktuálním GMC feedu (stažené/disapproved) se **skipnou** z FEED_UPLOAD, aby nedošlo k "Nabídka neexistuje" chybě. Viz [DEPLOYMENT-GUIDE.md — Krok 8.4b](./DEPLOYMENT-GUIDE.md#84b-jak-skript-řeší-item_id-case-uppercase-vs-lowercase).
 
 ### Campaign filtering
 ```javascript

@@ -59,9 +59,38 @@ var DataLayer = (function () {
     // === First-click dates (pro rising star / age gate) ===
     var firstClickDates = fetchFirstClickDates(aggregated, startDate, config);
 
-    // === Product prices (mapovano z shopping_product resource) ===
-    var productPrices = fetchProductPrices(aggregated);
+    // === Product prices + canonical item_ids (mapovano z shopping_product resource) ===
+    var productPricesResult = fetchProductPrices(aggregated);
+    var productPrices = productPricesResult.prices;
+    var itemIdCanonical = productPricesResult.canonical;
     Logger.log('INFO: Nactene ceny pro ' + Object.keys(productPrices).length + ' produktu z ' + aggregated.length + ' agregovanych.');
+    Logger.log('INFO: Canonical item_ids (pro GMC upload) nacteno: ' + Object.keys(itemIdCanonical).length);
+
+    // Detekuj dominantni case z canonical mapy (pro fallback u produktu co neni v shopping_product).
+    // Pokud >=70% produktu ma pismenka UPPERCASE, aplikujeme upper na unmatched (a vice versa).
+    // Duvod: disapproved / stazene produkty nejsou v shopping_product, ale jsou v GMC pod UPPERCASE
+    // (protoze klient systematicky pouziva UPPERCASE). Bez heuristiky by GMC upload selhal.
+    //
+    // CONFIG.itemIdCaseOverride umoznuje vynutit case manualne ('upper'/'lower'/'preserve').
+    // Default 'auto' = heuristika.
+    var caseStats = detectDominantCase(itemIdCanonical);
+    var override = config.itemIdCaseOverride || 'auto';
+    var dominantCase; // 'upper' | 'lower' | null
+    if (override === 'upper' || override === 'lower') {
+      dominantCase = override;
+      Logger.log('INFO: item_id case — CONFIG OVERRIDE = ' + override +
+                 ' (stats: upper=' + caseStats.upperPct + '% / lower=' + caseStats.lowerPct + '% / mixed=' + caseStats.mixedPct + '% z ' + caseStats.total + ')');
+    } else if (override === 'preserve') {
+      dominantCase = null;
+      Logger.log('INFO: item_id case — preserve (zadny fallback). Stats: upper=' + caseStats.upperPct + '% / lower=' + caseStats.lowerPct + '% / mixed=' + caseStats.mixedPct + '% z ' + caseStats.total);
+    } else {
+      dominantCase = caseStats.decision;
+      Logger.log('INFO: item_id case — auto-detect: ' + (dominantCase || 'mixed/unknown') +
+                 ' (stats: upper=' + caseStats.upperPct + '% / lower=' + caseStats.lowerPct + '% / mixed=' + caseStats.mixedPct + '% z ' + caseStats.total + ')');
+      if (!dominantCase && caseStats.total >= 10) {
+        Logger.log('HINT: Pokud GMC feed upload selhava pro unmatched produkty, nastav CONFIG.itemIdCaseOverride = "upper" (nebo "lower") pro vynuceni.');
+      }
+    }
 
     // === Impression shares (z shopping_product_view — shopping_performance_view to nepodporuje) ===
     var impressionShares = fetchImpressionShares(aggregated, startDate, endDate, config);
@@ -79,7 +108,7 @@ var DataLayer = (function () {
     Logger.log('INFO: Previous period: ' + previousPeriodRaw.length + ' rows loaded.');
     var previousPeriodByItemId = aggregatePreviousPeriodByItemId(previousPeriodRaw, config);
 
-    // === Enrich aggregated produkty o previous period reference + impression share ===
+    // === Enrich aggregated produkty o previous period reference + impression share + canonical ID ===
     for (var pi = 0; pi < aggregated.length; pi++) {
       var itemKey = aggregated[pi].itemId;
       var itemKeyLower = String(itemKey).toLowerCase();
@@ -98,6 +127,28 @@ var DataLayer = (function () {
 
       if (impressionShares[itemKeyLower] !== undefined) {
         aggregated[pi].searchImpressionShare = impressionShares[itemKeyLower];
+      }
+
+      // Canonical item_id pro GMC upload.
+      // Priority:
+      //  1) shopping_product mapping (zdroj pravdy — presne jak je v GMC, vcetne mixed-case "Print" atd.)
+      //  2) dominantCase heuristika (pro disapproved — jen pokud override aktivni nebo auto detekce souhlasi)
+      //  3) fallback: itemKey jak prisel z performance view (lowercase)
+      //
+      // hasCanonicalFromGmc = true znamena, ze produkt je aktualne v GMC (mapping overen).
+      // Pokud false, produkt byl pravdepodobne stazen z feedu / disapproved → v GMC neni, upload selze.
+      if (itemIdCanonical[itemKeyLower]) {
+        aggregated[pi].itemIdCanonical = itemIdCanonical[itemKeyLower];
+        aggregated[pi].hasCanonicalFromGmc = true;
+      } else if (dominantCase === 'upper') {
+        aggregated[pi].itemIdCanonical = String(itemKey).toUpperCase();
+        aggregated[pi].hasCanonicalFromGmc = false;
+      } else if (dominantCase === 'lower') {
+        aggregated[pi].itemIdCanonical = String(itemKey).toLowerCase();
+        aggregated[pi].hasCanonicalFromGmc = false;
+      } else {
+        aggregated[pi].itemIdCanonical = itemKey;
+        aggregated[pi].hasCanonicalFromGmc = false;
       }
     }
 
@@ -301,18 +352,62 @@ var DataLayer = (function () {
   }
 
   /**
-   * Mapuje item_id na product_price (z shopping_product resource).
+   * Detekuje dominantni case v canonical item_id mape (UPPER / LOWER / null).
+   * Pouziva se jako fallback pro produkty, ktere nejsou v shopping_product (disapproved,
+   * stazene z feedu, atd.) — pokud je vetsina produktu UPPERCASE, predpoklada se, ze
+   * unmatched produkty budou v GMC take UPPERCASE.
+   *
+   * Vraci { decision: 'upper' | 'lower' | null, upperPct, lowerPct, mixedPct, total }.
+   * Rozhodnuti: >=70% produktu ma dany case → dominantni. Jinak null.
+   */
+  function detectDominantCase(canonical) {
+    var upperCount = 0;
+    var lowerCount = 0;
+    var mixedCount = 0;
+    var total = 0;
+    for (var k in canonical) {
+      if (!canonical.hasOwnProperty(k)) continue;
+      var v = canonical[k];
+      // Analyza jen pismen (cislice a mezery case nemaji)
+      var letters = String(v).replace(/[^A-Za-z]/g, '');
+      if (!letters) continue;
+      total++;
+      if (letters === letters.toUpperCase()) {
+        upperCount++;
+      } else if (letters === letters.toLowerCase()) {
+        lowerCount++;
+      } else {
+        mixedCount++;
+      }
+    }
+    var result = {
+      decision: null,
+      upperPct: total > 0 ? Math.round(upperCount / total * 100) : 0,
+      lowerPct: total > 0 ? Math.round(lowerCount / total * 100) : 0,
+      mixedPct: total > 0 ? Math.round(mixedCount / total * 100) : 0,
+      total: total
+    };
+    if (total < 10) return result; // malo dat pro spolehlivou detekci
+    if (upperCount / total >= 0.7) result.decision = 'upper';
+    else if (lowerCount / total >= 0.7) result.decision = 'lower';
+    return result;
+  }
+
+  /**
+   * Mapuje item_id na product_price (z shopping_product resource)
+   * a zaroven vraci mapu lowercase → canonical (UPPERCASE z GMC) item_id.
    *
    * shopping_performance_view NEMA cenu produktu — ta je v shopping_product.
-   * item_id v shopping_product je UPPERCASE (napr. "NB 2414 KO"),
+   * item_id v shopping_product je UPPERCASE (napr. "NB 2414 KO" = jak je v GMC),
    * v shopping_performance_view je lowercase ("nb 2414 ko").
-   * Mapujeme case-insensitive.
+   * Interne mapujeme case-insensitive (lowercase klic), ale pro upload do GMC
+   * potrebujeme zachovat canonical UPPERCASE variantu.
    *
    * @param products pole aggregovanych produktu
-   * @returns mapa { lowercase_item_id: price_in_currency }
+   * @returns { prices: {lowercase_item_id: price}, canonical: {lowercase_item_id: original_item_id} }
    */
   function fetchProductPrices(products) {
-    var result = {};
+    var result = { prices: {}, canonical: {} };
     if (!products || products.length === 0) {
       return result;
     }
@@ -325,26 +420,31 @@ var DataLayer = (function () {
         'FROM shopping_product';
       var iterator = AdsApp.search(query);
       var fetchedCount = 0;
+      var canonicalCount = 0;
       var skippedNoPrice = 0;
       var samplePairs = []; // prvnich 5 item_id:price pro diagnostiku
       while (iterator.hasNext()) {
         var row = iterator.next();
         var itemId = row.shoppingProduct && row.shoppingProduct.itemId ? row.shoppingProduct.itemId : null;
         if (!itemId) continue;
+        var lowerKey = String(itemId).toLowerCase();
+        // Canonical mapa — vzdy (i pro produkty bez ceny, aby slo doplnit case pro GMC upload)
+        if (!result.canonical[lowerKey]) {
+          result.canonical[lowerKey] = String(itemId);
+          canonicalCount++;
+        }
         var priceMicros = row.shoppingProduct.priceMicros ? Number(row.shoppingProduct.priceMicros) : 0;
         if (priceMicros <= 0) {
           skippedNoPrice++;
           continue;
         }
-        // Klic = lowercase pro match s performance view (item_id v shopping_product je UPPERCASE)
-        var lowerKey = String(itemId).toLowerCase();
-        result[lowerKey] = priceMicros / 1000000;
+        result.prices[lowerKey] = priceMicros / 1000000;
         fetchedCount++;
         if (samplePairs.length < 5) {
           samplePairs.push(lowerKey + '=' + (priceMicros / 1000000).toFixed(0));
         }
       }
-      Logger.log('INFO: fetchProductPrices — nacteno ' + fetchedCount + ' cen (skipped no_price: ' + skippedNoPrice + '). Sample: ' + samplePairs.join(', '));
+      Logger.log('INFO: fetchProductPrices — nacteno ' + fetchedCount + ' cen + ' + canonicalCount + ' canonical IDs (skipped no_price: ' + skippedNoPrice + '). Sample: ' + samplePairs.join(', '));
 
       // Diagnostika: kolik z agreg. produktu ma cenu v feedu?
       var matched = 0;
@@ -352,7 +452,7 @@ var DataLayer = (function () {
       var unmatchedSamples = [];
       for (var p = 0; p < products.length; p++) {
         var pid = String(products[p].itemId || '').toLowerCase();
-        if (result[pid]) {
+        if (result.prices[pid]) {
           matched++;
         } else {
           unmatched++;

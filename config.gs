@@ -134,6 +134,14 @@ var Config = (function () {
       }
     }
 
+    // === ITEM_ID CASE OVERRIDE ===
+    if (config.itemIdCaseOverride !== undefined) {
+      var validCaseModes = ['auto', 'upper', 'lower', 'preserve'];
+      if (validCaseModes.indexOf(config.itemIdCaseOverride) === -1) {
+        errors.push('itemIdCaseOverride musi byt "auto", "upper", "lower" nebo "preserve" (ted: "' + config.itemIdCaseOverride + '")');
+      }
+    }
+
     // === CAMPAIGN FILTERING ===
     if (!isValidRegex(config.brandCampaignPattern)) {
       errors.push('brandCampaignPattern neni validni regex: "' + config.brandCampaignPattern + '"');

@@ -65,6 +65,16 @@ var CONFIG = {
                                             // aby zdrave produkty zustaly jen v main kampanich.
                                             // '' (prazdny string) = nezapisovat (opt-out).
 
+  // === ITEM_ID CASE (pro match s GMC) ===
+  // Google Ads vraci item_id lowercase, ale GMC ukladá UPPERCASE (typicky).
+  // Skript mapuje z shopping_product (canonical zdroj), pro unmatched produkty
+  // (disapproved, stazene z feedu) pouzije heuristiku / override.
+  //   'auto'     — detekuj dominantni case (>=70% produktu) z shopping_product (DEFAULT)
+  //   'upper'    — vynutit UPPERCASE pro vsechny (doporuceno pokud GMC ma IDs velkymi pismeny)
+  //   'lower'    — vynutit lowercase pro vsechny
+  //   'preserve' — nic neupravovat (vrati to, co dostaneme z Google Ads)
+  itemIdCaseOverride:     'auto',
+
   // === CAMPAIGN FILTERING ===
   brandCampaignPattern:   '(?i)BRD',        // Brand kampane — VYLOUCENE z analyzy
                                             // (uprav podle naming konvence klienta, napr. BRA, BRAND)

@@ -206,11 +206,24 @@ var Output = (function () {
     var flaggedCount = 0;
     var healthyCount = 0;
 
+    // DULEZITE: Pouzivame itemIdCanonical (z shopping_product = presne jak je v GMC vcetne mixed case).
+    // shopping_performance_view vraci lowercase item_id, ale GMC ukladá typicky UPPERCASE (nebo mixed case).
+    // Bez teto konverze GMC supplemental feed nematchne produkty a labely se neaplikuji.
+    //
+    // SKIP: Produkty bez canonical z GMC (hasCanonicalFromGmc=false) se NEZAPISUJI — pravdepodobne
+    // byly stazeny z feedu (disapproved/deleted) a GMC je nezna. Zapsani by vedlo k chybe "Nabidka neexistuje".
+
+    var skippedNotInGmc = 0;
+
     // Prvni prochod: flagged produkty (zachovava prioritni razeni)
     for (var i = 0; i < classified.length; i++) {
       var c = classified[i];
       if (c.primaryLabel && c.primaryLabel.length > 0) {
-        data.push([c.itemId, c.primaryLabel]);
+        if (!c.hasCanonicalFromGmc) {
+          skippedNotInGmc++;
+          continue;
+        }
+        data.push([c.itemIdCanonical || c.itemId, c.primaryLabel]);
         flaggedCount++;
       }
     }
@@ -222,10 +235,18 @@ var Output = (function () {
       for (var j = 0; j < classified.length; j++) {
         var h = classified[j];
         if (h.status === 'ok' && (!h.primaryLabel || h.primaryLabel.length === 0)) {
-          data.push([h.itemId, config.labelHealthyValue]);
+          if (!h.hasCanonicalFromGmc) {
+            skippedNotInGmc++;
+            continue;
+          }
+          data.push([h.itemIdCanonical || h.itemId, config.labelHealthyValue]);
           healthyCount++;
         }
       }
+    }
+
+    if (skippedNotInGmc > 0) {
+      Logger.log('INFO: FEED_UPLOAD — skipnuto ' + skippedNotInGmc + ' produktu (nejsou v shopping_product, pravdepodobne stazene z GMC feedu).');
     }
 
     if (data.length === 1) {

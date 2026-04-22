@@ -214,6 +214,25 @@ Po 5-30 min otevři supplemental feed → **Processing**:
 - ✅ Celkový počet aktualizovaných produktů: cca stejný jako `flagged + healthy` v Logger výstupu skriptu
 - ✅ Shodující se produkty: ideálně = celkový (pokud 100% item_id existuje v primary)
 - ❌ Pokud vidíš chyby typu "Neplatný atribut id" nebo "Příliš mnoho hodnot" → GMC čte špatný tab, zopakuj krok 8.1 s explicit výběrem `FEED_UPLOAD`
+- ❌ Pokud vidíš chybu **"Nabídka neexistuje"** pro pár produktů → viz [Troubleshooting — Nabídka neexistuje](#nabídka-neexistuje-v-gmc-upload-reportu) níže
+
+#### 8.4b Jak skript řeší item_id case (UPPERCASE vs lowercase)
+
+**Problém:** `segments.product_item_id` v Google Ads vrací item_id **lowercase** (`nb 2414 ko`), ale GMC ukládá **UPPERCASE** nebo **mixed-case** (`NB 2414 KO`, `NB 3012 Print`). Bez konverze by supplemental feed nikdy nematchnul.
+
+**Řešení (automatické):**
+
+1. **Canonical mapping ze `shopping_product` resource** — skript pro každý produkt fetchne jeho přesné item_id, jak je v GMC (včetně mixed-case jako `Print`, `Black` atd.). To je zdroj pravdy.
+2. **Produkty bez canonical mapping** (typicky ~5% = produkty stažené z feedu / disapproved) se **NEZAPISUJÍ** do FEED_UPLOAD — byly by to "ghost" produkty, které v aktuálním GMC neexistují a upload by selhal s "Nabídka neexistuje".
+3. **V logu** uvidíš: `INFO: FEED_UPLOAD — skipnuto N produktu (nejsou v shopping_product, pravdepodobne stazene z GMC feedu).`
+
+**Ověření:** V sheetu tab `DETAIL` → sloupec `item_id` by měl mít stejný case jako GMC (UPPERCASE nebo mixed). Porovnej s tím, co vidíš v GMC Products list.
+
+**Edge case — vynucení case:** Pokud tvá naming convention je jiná, v `CONFIG.itemIdCaseOverride` nastav:
+- `'auto'` (default) — detekce z `shopping_product`, bezpečná
+- `'upper'` — vynutit UPPERCASE pro **všechny** (pozor: rozbije mixed-case produkty typu `NB 3012 Print`)
+- `'lower'` — vynutit lowercase
+- `'preserve'` — nechat původní lowercase z `segments.product_item_id`
 
 #### 8.5 Nastavit listing groups v Google Ads
 
@@ -291,6 +310,32 @@ Zapiš findings do svého interního learning logu (nebo [otevři issue v repu](
 - Skript může vytvářet soubory v tvém Drive, ale potřebuje authorization
 - Při prvním runu `setupOutputSheet` schval prompted permissions
 - Pokud permission denied persists: prekontroluj, že Script běží pod správným Google účtem (ne klient account)
+
+### "Nabídka neexistuje" v GMC upload reportu
+
+**Příznak:** GMC feedupload report říká "Nabídka neexistuje" pro jeden nebo více produktů z FEED_UPLOAD.
+
+**Typické příčiny:**
+
+1. **Produkt byl stažen z feedu** (disapproved, out-of-stock, smazán z GMC). Skript fetchl historická data z `shopping_performance_view` (60 dní), ale produkt už v aktuálním GMC není.
+   - **Řešení:** Od aktuální verze skriptu (od md5 `0463dfdb…`) se tyto produkty **automaticky skipnou** z FEED_UPLOAD. Refresh skriptu a run znovu.
+   - V logu uvidíš: `INFO: FEED_UPLOAD — skipnuto N produktu (nejsou v shopping_product).`
+
+2. **Case mismatch** (UPPERCASE vs lowercase) — staré verze skriptu (před fix) zapisovaly lowercase IDs, ale GMC má UPPERCASE.
+   - **Řešení:** Update na aktuální skript. Canonical item_id se bere ze `shopping_product` (= přesně jak je v GMC, včetně mixed-case `Print` atd.).
+
+3. **Produkt je v GMC pod jiným ID než v Google Ads** — vzácné, způsobuje to ruční editace feed_ID po Google Ads historii.
+   - **Řešení:** Buď oprav ID v GMC (aby sedělo s tím v Ads), nebo manuálně uprav v sheetu FEED_UPLOAD před uploadem.
+
+**Verifikace, že fix funguje:**
+
+```
+INFO: Canonical item_ids (pro GMC upload) nacteno: 1531
+INFO: item_id case — auto-detect: upper (stats: upper=78% / lower=0% / mixed=22% z 1531)
+INFO: FEED_UPLOAD — zapsano 94 flagged + 0 healthy (skipnuto 5 bez canonical)
+```
+
+Po uploadu v GMC → "Shodující se produkty" by měly = "Celkový počet aktualizovaných produktů" (100% match rate).
 
 ## Deployment checklist (per klient)
 

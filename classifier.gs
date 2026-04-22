@@ -32,6 +32,8 @@ var Classifier = (function () {
   function classifyProduct(product, config, accountBaseline, perCampaignBaseline, firstClickDate, lastYearData, previousLifecycle, runDate, productPrices) {
     var result = {
       itemId: product.itemId,
+      itemIdCanonical: product.itemIdCanonical || product.itemId,  // verze z shopping_product (pro GMC upload)
+      hasCanonicalFromGmc: !!product.hasCanonicalFromGmc,            // true = produkt aktualne v GMC feedu
       productTitle: product.productTitle,
       productBrand: product.productBrand,
       productType: product.productType,
