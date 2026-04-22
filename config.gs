@@ -120,6 +120,19 @@ var Config = (function () {
     if (config.labelLoserRestValue === config.labelLowCtrValue) {
       errors.push('labelLoserRestValue a labelLowCtrValue nesmi byt stejne');
     }
+    // labelHealthyValue je optional — muze byt '' (vypnuto) nebo neprazdny string
+    if (config.labelHealthyValue !== undefined && config.labelHealthyValue !== '') {
+      if (typeof config.labelHealthyValue !== 'string') {
+        errors.push('labelHealthyValue musi byt string nebo "" (vypnuto)');
+      } else {
+        if (config.labelHealthyValue === config.labelLoserRestValue) {
+          errors.push('labelHealthyValue a labelLoserRestValue nesmi byt stejne');
+        }
+        if (config.labelHealthyValue === config.labelLowCtrValue) {
+          errors.push('labelHealthyValue a labelLowCtrValue nesmi byt stejne');
+        }
+      }
+    }
 
     // === CAMPAIGN FILTERING ===
     if (!isValidRegex(config.brandCampaignPattern)) {

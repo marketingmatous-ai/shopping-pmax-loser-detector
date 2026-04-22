@@ -203,22 +203,41 @@ var Output = (function () {
 
     var headerName = 'custom_label_' + config.customLabelIndex;
     var data = [['id', headerName]];
+    var flaggedCount = 0;
+    var healthyCount = 0;
 
+    // Prvni prochod: flagged produkty (zachovava prioritni razeni)
     for (var i = 0; i < classified.length; i++) {
       var c = classified[i];
       if (c.primaryLabel && c.primaryLabel.length > 0) {
         data.push([c.itemId, c.primaryLabel]);
+        flaggedCount++;
+      }
+    }
+
+    // Druhy prochod: healthy produkty (pokud je labelHealthyValue nastaveny)
+    // Kriterium: status='ok' (prosel vsemi gates) + bez primaryLabel (klasifikator ho nevyhodil).
+    // Zombie (INSUFFICIENT_DATA / NEW_PRODUCT_RAMP_UP / DATA_QUALITY_ISSUE) nedostavaji label.
+    if (config.labelHealthyValue && config.labelHealthyValue.length > 0) {
+      for (var j = 0; j < classified.length; j++) {
+        var h = classified[j];
+        if (h.status === 'ok' && (!h.primaryLabel || h.primaryLabel.length === 0)) {
+          data.push([h.itemId, config.labelHealthyValue]);
+          healthyCount++;
+        }
       }
     }
 
     if (data.length === 1) {
-      Logger.log('INFO: FEED_UPLOAD — zadny produkt nebyl flaggovany.');
+      Logger.log('INFO: FEED_UPLOAD — zadny produkt nebyl flaggovany ani healthy.');
       sheet.getRange(1, 1, 1, 2).setValues(data);
       return;
     }
 
     writeDataInBatches(sheet, data);
-    Logger.log('INFO: FEED_UPLOAD — zapsano ' + (data.length - 1) + ' radku.');
+    Logger.log('INFO: FEED_UPLOAD — zapsano ' + flaggedCount + ' flagged' +
+               (healthyCount > 0 ? ' + ' + healthyCount + ' healthy' : '') +
+               ' = ' + (data.length - 1) + ' radku.');
   }
 
   /**

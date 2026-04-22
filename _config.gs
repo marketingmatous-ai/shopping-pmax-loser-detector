@@ -59,6 +59,11 @@ var CONFIG = {
   customLabelIndex:       2,        // Cislo labelu 0-4 (uzivatel zvoli, co nepouziva v GMC)
   labelLoserRestValue:    'loser_rest',     // Hodnota zapsana do custom_label
   labelLowCtrValue:       'low_ctr_audit',  // Hodnota pro low-CTR kategorii
+  labelHealthyValue:      'healthy',        // Produkty co prosly revizi (status='ok', bez flagu).
+                                            // Zapise se do FEED_UPLOAD spolu s flagged.
+                                            // Pouziti: v rest kampani filter `custom_label_N != healthy`
+                                            // aby zdrave produkty zustaly jen v main kampanich.
+                                            // '' (prazdny string) = nezapisovat (opt-out).
 
   // === CAMPAIGN FILTERING ===
   brandCampaignPattern:   '(?i)BRD',        // Brand kampane — VYLOUCENE z analyzy

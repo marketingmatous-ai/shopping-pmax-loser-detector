@@ -25,7 +25,7 @@
  *   /Users/matousnovy/Documents/PPC/skripty/shopping-pmax-loser-detector/README.md
  *   /Users/matousnovy/Documents/PPC/skripty/shopping-pmax-loser-detector/DEPLOYMENT-GUIDE.md
  *
- * VYGENEROVANO: 2026-04-21 21:05
+ * VYGENEROVANO: 2026-04-22 14:11
  * BUILD SCRIPT: build-combined.sh
  * ============================================================================
  */
@@ -92,6 +92,11 @@ var CONFIG = {
   customLabelIndex:       2,        // Cislo labelu 0-4 (uzivatel zvoli, co nepouziva v GMC)
   labelLoserRestValue:    'loser_rest',     // Hodnota zapsana do custom_label
   labelLowCtrValue:       'low_ctr_audit',  // Hodnota pro low-CTR kategorii
+  labelHealthyValue:      'healthy',        // Produkty co prosly revizi (status='ok', bez flagu).
+                                            // Zapise se do FEED_UPLOAD spolu s flagged.
+                                            // Pouziti: v rest kampani filter `custom_label_N != healthy`
+                                            // aby zdrave produkty zustaly jen v main kampanich.
+                                            // '' (prazdny string) = nezapisovat (opt-out).
 
   // === CAMPAIGN FILTERING ===
   brandCampaignPattern:   '(?i)BRD',        // Brand kampane — VYLOUCENE z analyzy
@@ -600,6 +605,19 @@ var Config = (function () {
     }
     if (config.labelLoserRestValue === config.labelLowCtrValue) {
       errors.push('labelLoserRestValue a labelLowCtrValue nesmi byt stejne');
+    }
+    // labelHealthyValue je optional — muze byt '' (vypnuto) nebo neprazdny string
+    if (config.labelHealthyValue !== undefined && config.labelHealthyValue !== '') {
+      if (typeof config.labelHealthyValue !== 'string') {
+        errors.push('labelHealthyValue musi byt string nebo "" (vypnuto)');
+      } else {
+        if (config.labelHealthyValue === config.labelLoserRestValue) {
+          errors.push('labelHealthyValue a labelLoserRestValue nesmi byt stejne');
+        }
+        if (config.labelHealthyValue === config.labelLowCtrValue) {
+          errors.push('labelHealthyValue a labelLowCtrValue nesmi byt stejne');
+        }
+      }
     }
 
     // === CAMPAIGN FILTERING ===
@@ -2951,22 +2969,41 @@ var Output = (function () {
 
     var headerName = 'custom_label_' + config.customLabelIndex;
     var data = [['id', headerName]];
+    var flaggedCount = 0;
+    var healthyCount = 0;
 
+    // Prvni prochod: flagged produkty (zachovava prioritni razeni)
     for (var i = 0; i < classified.length; i++) {
       var c = classified[i];
       if (c.primaryLabel && c.primaryLabel.length > 0) {
         data.push([c.itemId, c.primaryLabel]);
+        flaggedCount++;
+      }
+    }
+
+    // Druhy prochod: healthy produkty (pokud je labelHealthyValue nastaveny)
+    // Kriterium: status='ok' (prosel vsemi gates) + bez primaryLabel (klasifikator ho nevyhodil).
+    // Zombie (INSUFFICIENT_DATA / NEW_PRODUCT_RAMP_UP / DATA_QUALITY_ISSUE) nedostavaji label.
+    if (config.labelHealthyValue && config.labelHealthyValue.length > 0) {
+      for (var j = 0; j < classified.length; j++) {
+        var h = classified[j];
+        if (h.status === 'ok' && (!h.primaryLabel || h.primaryLabel.length === 0)) {
+          data.push([h.itemId, config.labelHealthyValue]);
+          healthyCount++;
+        }
       }
     }
 
     if (data.length === 1) {
-      Logger.log('INFO: FEED_UPLOAD — zadny produkt nebyl flaggovany.');
+      Logger.log('INFO: FEED_UPLOAD — zadny produkt nebyl flaggovany ani healthy.');
       sheet.getRange(1, 1, 1, 2).setValues(data);
       return;
     }
 
     writeDataInBatches(sheet, data);
-    Logger.log('INFO: FEED_UPLOAD — zapsano ' + (data.length - 1) + ' radku.');
+    Logger.log('INFO: FEED_UPLOAD — zapsano ' + flaggedCount + ' flagged' +
+               (healthyCount > 0 ? ' + ' + healthyCount + ' healthy' : '') +
+               ' = ' + (data.length - 1) + ' radku.');
   }
 
   /**
@@ -6133,6 +6170,7 @@ function buildConfigTabRows(cfg) {
     ['customLabelIndex', cfg.customLabelIndex, 'Číslo labelu 0–4 (co klient nepoužívá v GMC)'],
     ['labelLoserRestValue', cfg.labelLoserRestValue, 'Hodnota zapsaná do custom_label pro losery'],
     ['labelLowCtrValue', cfg.labelLowCtrValue, 'Hodnota zapsaná do custom_label pro low-CTR'],
+    ['labelHealthyValue', cfg.labelHealthyValue || '(vypnuto)', 'Hodnota pro zdravé produkty (status=ok, bez flagu). "" = nezapisovat'],
     ['', '', ''],
     ['CAMPAIGN FILTERING (regex v názvu kampaně)', '', ''],
     ['brandCampaignPattern', cfg.brandCampaignPattern, 'Brand kampaně se vyloučí z analýzy'],

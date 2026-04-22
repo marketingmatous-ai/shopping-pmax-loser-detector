@@ -449,6 +449,7 @@ function buildConfigTabRows(cfg) {
     ['customLabelIndex', cfg.customLabelIndex, 'Číslo labelu 0–4 (co klient nepoužívá v GMC)'],
     ['labelLoserRestValue', cfg.labelLoserRestValue, 'Hodnota zapsaná do custom_label pro losery'],
     ['labelLowCtrValue', cfg.labelLowCtrValue, 'Hodnota zapsaná do custom_label pro low-CTR'],
+    ['labelHealthyValue', cfg.labelHealthyValue || '(vypnuto)', 'Hodnota pro zdravé produkty (status=ok, bez flagu). "" = nezapisovat'],
     ['', '', ''],
     ['CAMPAIGN FILTERING (regex v názvu kampaně)', '', ''],
     ['brandCampaignPattern', cfg.brandCampaignPattern, 'Brand kampaně se vyloučí z analýzy'],

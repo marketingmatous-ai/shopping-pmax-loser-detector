@@ -203,9 +203,24 @@ Dokumentace pro uživatele sheetu — odkaz na template copy, popis tabů, instr
 ### 2. FEED_UPLOAD
 Ready-to-import CSV formát:
 - `id` — product item_id
-- `custom_label_N` — hodnota (`loser_rest` / `low_ctr_audit`)
+- `custom_label_N` — hodnota:
+  - `loser_rest` — ztrátové produkty (všechny 4 tiery)
+  - `low_ctr_audit` — nízké CTR
+  - `DECLINING` — pokles tržeb
+  - `RISING` — růst
+  - `LOST_OPPORTUNITY` — rentabilní + málo zobrazované
+  - `healthy` — produkty, které prošly revizí (status=ok, bez flagu)
 
 Použití: Upload jako Supplemental Feed do GMC, nebo import do Mergada.
+
+**Tipy pro nastavení v Google Ads:**
+
+- **Rest kampaň (filter loserů):** `custom_label_N = loser_rest` → jen losery jdou do rest
+- **Alternativně exclude healthy z rest:** `custom_label_N != healthy` → zdravé produkty zůstávají v main
+- **Main kampaň scaling:** filtruj `custom_label_N = RISING` pro vlastní asset group / listing group s vyšším budgetem
+- **Audit kampaň:** `custom_label_N = low_ctr_audit` nebo `DECLINING` → ruční review produktového feedu
+
+**Opt-out healthy label:** Nastav `CONFIG.labelHealthyValue = ''` (prázdný string) → healthy produkty se nezapisují, feed obsahuje jen flagged (chování před touto verzí).
 
 ### 3. DETAIL
 Full trace per produkt (41 sloupců):
