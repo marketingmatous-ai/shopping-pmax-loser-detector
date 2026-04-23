@@ -25,7 +25,7 @@
  *   /Users/matousnovy/Documents/PPC/skripty/shopping-pmax-loser-detector/README.md
  *   /Users/matousnovy/Documents/PPC/skripty/shopping-pmax-loser-detector/DEPLOYMENT-GUIDE.md
  *
- * VYGENEROVANO: 2026-04-22 21:41
+ * VYGENEROVANO: 2026-04-23 13:07
  * BUILD SCRIPT: build-combined.sh
  * ============================================================================
  */
@@ -108,10 +108,17 @@ var CONFIG = {
   //   'preserve' — nic neupravovat (vrati to, co dostaneme z Google Ads)
   itemIdCaseOverride:     'auto',
 
-  // === CAMPAIGN FILTERING ===
-  brandCampaignPattern:   '(?i)BRD',        // Brand kampane — VYLOUCENE z analyzy
-                                            // (uprav podle naming konvence klienta, napr. BRA, BRAND)
-  restCampaignPattern:    '(?i)REST',       // Rest kampane — ignorovane
+  // === CAMPAIGN BUCKET SEPARATION ===
+  // Kampane se rozdeluji do 3 bucketu (main / brand / rest) podle regex matchingu
+  // na nazev kampane. Klasifikace (LOSER / LOW_CTR / RISING / DECLINING / LOST_OPP)
+  // se pocita JEN z main_metrics, aby brand spike / rest spend nezkreslily thresholdy.
+  // Brand a rest data jsou ale zachovana v bucketech (brand_metrics, rest_metrics)
+  // pro dashboard insights, effectiveness tracking a lifecycle transitions (RESOLVED).
+  brandCampaignPattern:   '(?i)BRD',        // Regex na brand kampane (uprav podle naming konvence)
+                                            // Napr. '(?i)BRD' / '(?i)BRA' / '(?i)BRAND'
+                                            // '' (prazdny) nebo '^$' = zadny brand bucket
+  restCampaignPattern:    '(?i)REST',       // Regex na rest kampane (kam presouvame losery)
+                                            // '^$' = zadna rest struktura (zadny RESOLVED tracking)
   analyzeChannels:        ['SHOPPING', 'PERFORMANCE_MAX'],  // Typy kampani
 
   // === SAMPLE SIZE GATE (ochrana proti false-positive) ===
@@ -849,7 +856,10 @@ var Config = (function () {
 var DataLayer = (function () {
   /**
    * Hlavni query: vraci vsechny produkty v SHOPPING + PMAX kampanich za lookback period.
-   * Aplikuje filtering pres brand/rest regex v JS (ne v GAQL — RE2 ma omezenou sadu).
+   * Kampane se rozdeluji do 4 bucketu (main / brand / rest / paused) podle regex.
+   * Paused = uplne ignorovano. Brand a rest = oddelene do vlastnich metrik bucketu,
+   * zachovane pro insights a transition tracking (NE vylouceno z analyzy).
+   * Klasifikace se pocita jen z main_metrics.
    *
    * @param config CONFIG objekt
    * @returns { products: [...], accountBaseline: {...}, perCampaignBaseline: {...}, excludedCounts: {...} }
@@ -4222,11 +4232,11 @@ var Output = (function () {
     );
 
     var funnelData = [
-      ['Řádků produkt-kampaň (před filtrem)', formatInt(summary.funnel.rawRows), ''],
-      ['Vyloučeno — brand kampaně (' + config.brandCampaignPattern + ')', formatInt(summary.funnel.brandExcluded), pct(summary.funnel.brandExcluded, summary.funnel.rawRows)],
-      ['Vyloučeno — rest kampaně (' + config.restCampaignPattern + ')', formatInt(summary.funnel.restExcluded), pct(summary.funnel.restExcluded, summary.funnel.rawRows)],
-      ['Vyloučeno — pozastavené kampaně', formatInt(summary.funnel.pausedExcluded), pct(summary.funnel.pausedExcluded, summary.funnel.rawRows)],
-      ['Zbývá po filtru (před agregací)', formatInt(summary.funnel.keptRows), pct(summary.funnel.keptRows, summary.funnel.rawRows)],
+      ['Řádků produkt-kampaň (všechny buckety)', formatInt(summary.funnel.rawRows), ''],
+      ['Odděleno do brand_metrics (' + config.brandCampaignPattern + ')', formatInt(summary.funnel.brandExcluded), pct(summary.funnel.brandExcluded, summary.funnel.rawRows)],
+      ['Odděleno do rest_metrics (' + config.restCampaignPattern + ')', formatInt(summary.funnel.restExcluded), pct(summary.funnel.restExcluded, summary.funnel.rawRows)],
+      ['Ignorováno — pozastavené kampaně', formatInt(summary.funnel.pausedExcluded), pct(summary.funnel.pausedExcluded, summary.funnel.rawRows)],
+      ['Main (vstup do klasifikace)', formatInt(summary.funnel.keptRows), pct(summary.funnel.keptRows, summary.funnel.rawRows)],
       ['Po agregaci (unikátních item_id)', formatInt(summary.funnel.afterAggregation), ''],
       ['Přeskočeno — nové produkty (< ' + config.minProductAgeDays + ' dní)', formatInt(summary.funnel.tooYoung), pct(summary.funnel.tooYoung, summary.funnel.afterAggregation)],
       ['Přeskočeno — málo dat (< ' + minClicksThresholdCalc + ' kliků)', formatInt(summary.funnel.insufficientData), pct(summary.funnel.insufficientData, summary.funnel.afterAggregation)],
@@ -5791,11 +5801,13 @@ var Output = (function () {
     body += 'Period: ' + Utils.formatDate(summary.lookbackStart) + ' to ' + Utils.formatDate(summary.lookbackEnd) + ' (' + config.lookbackDays + ' days)\n';
     body += 'Sheet: ' + sheetUrl + '\n\n';
 
-    body += '=== FUNNEL ===\n';
-    body += 'Raw rows:              ' + summary.funnel.rawRows + '\n';
-    body += 'Brand excluded:        ' + summary.funnel.brandExcluded + '\n';
-    body += 'Rest excluded:         ' + summary.funnel.restExcluded + '\n';
-    body += 'Paused excluded:       ' + summary.funnel.pausedExcluded + '\n';
+    body += '=== FUNNEL (bucket split) ===\n';
+    body += 'Raw rows (all buckets):  ' + summary.funnel.rawRows + '\n';
+    body += 'Brand bucket (separated): ' + summary.funnel.brandExcluded + '\n';
+    body += 'Rest bucket (separated):  ' + summary.funnel.restExcluded + '\n';
+    body += 'Paused (ignored):         ' + summary.funnel.pausedExcluded + '\n';
+    body += 'Main (classified):        ' + ((summary.funnel.keptRows !== undefined) ? summary.funnel.keptRows : 'N/A') + '\n';
+    body += '\n=== GATES (per-product) ===\n';
     body += 'Too young (<' + config.minProductAgeDays + 'd):     ' + summary.funnel.tooYoung + '\n';
     body += 'Insufficient data:     ' + summary.funnel.insufficientData + '\n';
     body += 'Data quality issues:   ' + summary.funnel.dataQualityIssues + '\n';
@@ -6221,12 +6233,12 @@ function logSummary(summary, effectiveness) {
   Logger.log('Account cost: ' + summary.accountBaseline.totalCost + ' ' + summary.currency);
   Logger.log('Account CVR: ' + Utils.safePctFormat(summary.accountBaseline.cvr * 100));
   Logger.log('');
-  Logger.log('FUNNEL (campaign filter):');
-  Logger.log('  raw rows (pre-filter):   ' + summary.funnel.rawRows);
-  Logger.log('  excluded brand:          ' + summary.funnel.brandExcluded);
-  Logger.log('  excluded rest:           ' + summary.funnel.restExcluded);
-  Logger.log('  excluded paused:         ' + summary.funnel.pausedExcluded);
-  Logger.log('  kept (main enabled):     ' + ((summary.funnel.keptRows !== undefined) ? summary.funnel.keptRows : 'N/A'));
+  Logger.log('FUNNEL (campaign bucket split — brand/rest se OddELuji, ne vylucuji):');
+  Logger.log('  raw rows (vse):          ' + summary.funnel.rawRows);
+  Logger.log('  separated to brand:      ' + summary.funnel.brandExcluded + ' (do brand_metrics, zachovano)');
+  Logger.log('  separated to rest:       ' + summary.funnel.restExcluded + ' (do rest_metrics, zachovano)');
+  Logger.log('  ignored paused:          ' + summary.funnel.pausedExcluded);
+  Logger.log('  kept for classification (main): ' + ((summary.funnel.keptRows !== undefined) ? summary.funnel.keptRows : 'N/A'));
   Logger.log('  unique item_ids after agg: ' + ((summary.funnel.afterAggregation !== undefined) ? summary.funnel.afterAggregation : 'N/A'));
   Logger.log('');
   Logger.log('FUNNEL (per-product gates):');
@@ -6313,9 +6325,9 @@ function buildConfigTabRows(cfg) {
     ['labelLowCtrValue', cfg.labelLowCtrValue, 'Hodnota zapsaná do custom_label pro low-CTR'],
     ['labelHealthyValue', cfg.labelHealthyValue || '(vypnuto)', 'Hodnota pro zdravé produkty (status=ok, bez flagu). "" = nezapisovat'],
     ['', '', ''],
-    ['CAMPAIGN FILTERING (regex v názvu kampaně)', '', ''],
-    ['brandCampaignPattern', cfg.brandCampaignPattern, 'Brand kampaně se vyloučí z analýzy'],
-    ['restCampaignPattern', cfg.restCampaignPattern, 'Rest kampaně se ignorují'],
+    ['CAMPAIGN BUCKET SPLIT (regex v názvu kampaně)', '', ''],
+    ['brandCampaignPattern', cfg.brandCampaignPattern, 'Brand kampaně → brand_metrics bucket (zachováno pro insights, NE v klasifikaci)'],
+    ['restCampaignPattern', cfg.restCampaignPattern, 'Rest kampaně → rest_metrics bucket (pro RESOLVED tracking, NE v klasifikaci)'],
     ['analyzeChannels', (cfg.analyzeChannels || []).join(','), 'Typy kampaní (comma-separated)'],
     ['', '', ''],
     ['SAMPLE SIZE GATE (ochrana proti false-positive)', '', ''],

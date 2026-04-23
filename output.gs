@@ -1336,11 +1336,11 @@ var Output = (function () {
     );
 
     var funnelData = [
-      ['Řádků produkt-kampaň (před filtrem)', formatInt(summary.funnel.rawRows), ''],
-      ['Vyloučeno — brand kampaně (' + config.brandCampaignPattern + ')', formatInt(summary.funnel.brandExcluded), pct(summary.funnel.brandExcluded, summary.funnel.rawRows)],
-      ['Vyloučeno — rest kampaně (' + config.restCampaignPattern + ')', formatInt(summary.funnel.restExcluded), pct(summary.funnel.restExcluded, summary.funnel.rawRows)],
-      ['Vyloučeno — pozastavené kampaně', formatInt(summary.funnel.pausedExcluded), pct(summary.funnel.pausedExcluded, summary.funnel.rawRows)],
-      ['Zbývá po filtru (před agregací)', formatInt(summary.funnel.keptRows), pct(summary.funnel.keptRows, summary.funnel.rawRows)],
+      ['Řádků produkt-kampaň (všechny buckety)', formatInt(summary.funnel.rawRows), ''],
+      ['Odděleno do brand_metrics (' + config.brandCampaignPattern + ')', formatInt(summary.funnel.brandExcluded), pct(summary.funnel.brandExcluded, summary.funnel.rawRows)],
+      ['Odděleno do rest_metrics (' + config.restCampaignPattern + ')', formatInt(summary.funnel.restExcluded), pct(summary.funnel.restExcluded, summary.funnel.rawRows)],
+      ['Ignorováno — pozastavené kampaně', formatInt(summary.funnel.pausedExcluded), pct(summary.funnel.pausedExcluded, summary.funnel.rawRows)],
+      ['Main (vstup do klasifikace)', formatInt(summary.funnel.keptRows), pct(summary.funnel.keptRows, summary.funnel.rawRows)],
       ['Po agregaci (unikátních item_id)', formatInt(summary.funnel.afterAggregation), ''],
       ['Přeskočeno — nové produkty (< ' + config.minProductAgeDays + ' dní)', formatInt(summary.funnel.tooYoung), pct(summary.funnel.tooYoung, summary.funnel.afterAggregation)],
       ['Přeskočeno — málo dat (< ' + minClicksThresholdCalc + ' kliků)', formatInt(summary.funnel.insufficientData), pct(summary.funnel.insufficientData, summary.funnel.afterAggregation)],
@@ -2905,11 +2905,13 @@ var Output = (function () {
     body += 'Period: ' + Utils.formatDate(summary.lookbackStart) + ' to ' + Utils.formatDate(summary.lookbackEnd) + ' (' + config.lookbackDays + ' days)\n';
     body += 'Sheet: ' + sheetUrl + '\n\n';
 
-    body += '=== FUNNEL ===\n';
-    body += 'Raw rows:              ' + summary.funnel.rawRows + '\n';
-    body += 'Brand excluded:        ' + summary.funnel.brandExcluded + '\n';
-    body += 'Rest excluded:         ' + summary.funnel.restExcluded + '\n';
-    body += 'Paused excluded:       ' + summary.funnel.pausedExcluded + '\n';
+    body += '=== FUNNEL (bucket split) ===\n';
+    body += 'Raw rows (all buckets):  ' + summary.funnel.rawRows + '\n';
+    body += 'Brand bucket (separated): ' + summary.funnel.brandExcluded + '\n';
+    body += 'Rest bucket (separated):  ' + summary.funnel.restExcluded + '\n';
+    body += 'Paused (ignored):         ' + summary.funnel.pausedExcluded + '\n';
+    body += 'Main (classified):        ' + ((summary.funnel.keptRows !== undefined) ? summary.funnel.keptRows : 'N/A') + '\n';
+    body += '\n=== GATES (per-product) ===\n';
     body += 'Too young (<' + config.minProductAgeDays + 'd):     ' + summary.funnel.tooYoung + '\n';
     body += 'Insufficient data:     ' + summary.funnel.insufficientData + '\n';
     body += 'Data quality issues:   ' + summary.funnel.dataQualityIssues + '\n';

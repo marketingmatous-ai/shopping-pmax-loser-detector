@@ -359,12 +359,12 @@ function logSummary(summary, effectiveness) {
   Logger.log('Account cost: ' + summary.accountBaseline.totalCost + ' ' + summary.currency);
   Logger.log('Account CVR: ' + Utils.safePctFormat(summary.accountBaseline.cvr * 100));
   Logger.log('');
-  Logger.log('FUNNEL (campaign filter):');
-  Logger.log('  raw rows (pre-filter):   ' + summary.funnel.rawRows);
-  Logger.log('  excluded brand:          ' + summary.funnel.brandExcluded);
-  Logger.log('  excluded rest:           ' + summary.funnel.restExcluded);
-  Logger.log('  excluded paused:         ' + summary.funnel.pausedExcluded);
-  Logger.log('  kept (main enabled):     ' + ((summary.funnel.keptRows !== undefined) ? summary.funnel.keptRows : 'N/A'));
+  Logger.log('FUNNEL (campaign bucket split — brand/rest se OddELuji, ne vylucuji):');
+  Logger.log('  raw rows (vse):          ' + summary.funnel.rawRows);
+  Logger.log('  separated to brand:      ' + summary.funnel.brandExcluded + ' (do brand_metrics, zachovano)');
+  Logger.log('  separated to rest:       ' + summary.funnel.restExcluded + ' (do rest_metrics, zachovano)');
+  Logger.log('  ignored paused:          ' + summary.funnel.pausedExcluded);
+  Logger.log('  kept for classification (main): ' + ((summary.funnel.keptRows !== undefined) ? summary.funnel.keptRows : 'N/A'));
   Logger.log('  unique item_ids after agg: ' + ((summary.funnel.afterAggregation !== undefined) ? summary.funnel.afterAggregation : 'N/A'));
   Logger.log('');
   Logger.log('FUNNEL (per-product gates):');
@@ -451,9 +451,9 @@ function buildConfigTabRows(cfg) {
     ['labelLowCtrValue', cfg.labelLowCtrValue, 'Hodnota zapsaná do custom_label pro low-CTR'],
     ['labelHealthyValue', cfg.labelHealthyValue || '(vypnuto)', 'Hodnota pro zdravé produkty (status=ok, bez flagu). "" = nezapisovat'],
     ['', '', ''],
-    ['CAMPAIGN FILTERING (regex v názvu kampaně)', '', ''],
-    ['brandCampaignPattern', cfg.brandCampaignPattern, 'Brand kampaně se vyloučí z analýzy'],
-    ['restCampaignPattern', cfg.restCampaignPattern, 'Rest kampaně se ignorují'],
+    ['CAMPAIGN BUCKET SPLIT (regex v názvu kampaně)', '', ''],
+    ['brandCampaignPattern', cfg.brandCampaignPattern, 'Brand kampaně → brand_metrics bucket (zachováno pro insights, NE v klasifikaci)'],
+    ['restCampaignPattern', cfg.restCampaignPattern, 'Rest kampaně → rest_metrics bucket (pro RESOLVED tracking, NE v klasifikaci)'],
     ['analyzeChannels', (cfg.analyzeChannels || []).join(','), 'Typy kampaní (comma-separated)'],
     ['', '', ''],
     ['SAMPLE SIZE GATE (ochrana proti false-positive)', '', ''],

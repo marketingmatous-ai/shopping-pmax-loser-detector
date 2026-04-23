@@ -442,12 +442,13 @@ itemIdCaseOverride: 'auto'
 ```
 Skript automaticky mapuje item_id ze `shopping_product` resource (= přesně jak v GMC, včetně mixed-case). Produkty co nejsou v aktuálním GMC feedu (stažené/disapproved) se **skipnou** z FEED_UPLOAD, aby nedošlo k "Nabídka neexistuje" chybě. Viz [DEPLOYMENT-GUIDE.md — Krok 8.4b](./DEPLOYMENT-GUIDE.md#84b-jak-skript-řeší-item_id-case-uppercase-vs-lowercase).
 
-### Campaign filtering
+### Campaign bucket split
 ```javascript
-brandCampaignPattern: '(?i)BRD'      // Regex pro brand kampaně
-restCampaignPattern: '(?i)REST'      // Regex pro rest kampaně
+brandCampaignPattern: '(?i)BRD'      // Regex: kampaně → brand_metrics bucket
+restCampaignPattern: '(?i)REST'      // Regex: kampaně → rest_metrics bucket
 analyzeChannels: ['SHOPPING', 'PERFORMANCE_MAX']
 ```
+Brand a rest kampaně se **neVYLUČUJÍ** — oddělí se do vlastních metrik bucketu. Produkt má pak `main_metrics / brand_metrics / rest_metrics / total_metrics`. Klasifikátory běží jen na main (brand/rest by zkreslily), ale data jsou viditelná v DETAIL/ACTIONS a slouží pro RESOLVED lifecycle tracking + brand insights.
 
 ### Sample size gate
 ```javascript
@@ -566,19 +567,21 @@ Skript důsledně rozlišuje 4 "buckets" metrik per produkt:
 ### Funnel invariant
 
 ```
-raw_rows
-  − brand_excluded
-  − rest_excluded
-  − paused_excluded
-  = kept_rows
-    → aggregate per item_id
-    = afterAggregation (unique products)
-      − tooYoung
-      − insufficientData
-      − dataQualityIssues
-      = classified
-        = flagged + healthy
+raw_rows (všechny kampaně)
+  ├─ → brand bucket (odděleno do brand_metrics — zachováno pro insights)
+  ├─ → rest bucket  (odděleno do rest_metrics — pro RESOLVED tracking)
+  ├─ → paused       (ignorováno)
+  └─ → main bucket  = kept_rows (vstup do klasifikace)
+        → aggregate per item_id (každý produkt má main + brand + rest + total)
+        = afterAggregation (unique products)
+          − tooYoung
+          − insufficientData
+          − dataQualityIssues
+          = classified
+            = flagged + healthy
 ```
+
+**Důležité:** brand a rest kampaně se **neVYLUČUJÍ**, jen se oddělí do vlastních bucketů. Každý produkt má 4 sady metrik (main/brand/rest/total). Klasifikátory (LOSER, LOW_CTR, RISING, DECLINING, LOST_OPP) běží JEN na `main_metrics` — brand/rest by zkreslily (brand spike = false RISING, rest = záměrný dump loserů). Brand/rest data jsou pak v DETAIL/ACTIONS tabu viditelná jako informační sloupce (`brand_share_pct`, `total_cost`, atd.).
 
 **Invariant check** v logu: `young + insufficient + dq + classified = afterAggregation`. Pokud ne → bug v pipeline.
 

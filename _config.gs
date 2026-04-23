@@ -75,10 +75,17 @@ var CONFIG = {
   //   'preserve' — nic neupravovat (vrati to, co dostaneme z Google Ads)
   itemIdCaseOverride:     'auto',
 
-  // === CAMPAIGN FILTERING ===
-  brandCampaignPattern:   '(?i)BRD',        // Brand kampane — VYLOUCENE z analyzy
-                                            // (uprav podle naming konvence klienta, napr. BRA, BRAND)
-  restCampaignPattern:    '(?i)REST',       // Rest kampane — ignorovane
+  // === CAMPAIGN BUCKET SEPARATION ===
+  // Kampane se rozdeluji do 3 bucketu (main / brand / rest) podle regex matchingu
+  // na nazev kampane. Klasifikace (LOSER / LOW_CTR / RISING / DECLINING / LOST_OPP)
+  // se pocita JEN z main_metrics, aby brand spike / rest spend nezkreslily thresholdy.
+  // Brand a rest data jsou ale zachovana v bucketech (brand_metrics, rest_metrics)
+  // pro dashboard insights, effectiveness tracking a lifecycle transitions (RESOLVED).
+  brandCampaignPattern:   '(?i)BRD',        // Regex na brand kampane (uprav podle naming konvence)
+                                            // Napr. '(?i)BRD' / '(?i)BRA' / '(?i)BRAND'
+                                            // '' (prazdny) nebo '^$' = zadny brand bucket
+  restCampaignPattern:    '(?i)REST',       // Regex na rest kampane (kam presouvame losery)
+                                            // '^$' = zadna rest struktura (zadny RESOLVED tracking)
   analyzeChannels:        ['SHOPPING', 'PERFORMANCE_MAX'],  // Typy kampani
 
   // === SAMPLE SIZE GATE (ochrana proti false-positive) ===

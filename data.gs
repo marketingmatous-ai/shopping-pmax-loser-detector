@@ -15,7 +15,10 @@
 var DataLayer = (function () {
   /**
    * Hlavni query: vraci vsechny produkty v SHOPPING + PMAX kampanich za lookback period.
-   * Aplikuje filtering pres brand/rest regex v JS (ne v GAQL — RE2 ma omezenou sadu).
+   * Kampane se rozdeluji do 4 bucketu (main / brand / rest / paused) podle regex.
+   * Paused = uplne ignorovano. Brand a rest = oddelene do vlastnich metrik bucketu,
+   * zachovane pro insights a transition tracking (NE vylouceno z analyzy).
+   * Klasifikace se pocita jen z main_metrics.
    *
    * @param config CONFIG objekt
    * @returns { products: [...], accountBaseline: {...}, perCampaignBaseline: {...}, excludedCounts: {...} }
